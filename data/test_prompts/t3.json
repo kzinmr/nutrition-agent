@@ -1,0 +1,34 @@
+{
+  "id": "t3",
+  "description": "Low-carb diet",
+  "notes": "Maximum 100g carbs per day, high fat and protein",
+  "inventory": [
+    {"name": "beef_sirloin", "amount_g": 300, "unit": "g"},
+    {"name": "cheddar_cheese", "amount_g": 200, "unit": "g"},
+    {"name": "spinach", "amount_g": 200, "unit": "g"},
+    {"name": "avocado", "amount_g": 200, "unit": "g"},
+    {"name": "eggs", "amount_g": 300, "unit": "g"}
+  ],
+  "constraints": {
+    "daily_calories": 2200.0,
+    "pfc_ratio": [35.0, 55.0, 10.0],
+    "allergens": null,
+    "dietary_restrictions": ["low-carb"]
+  },
+  "ground_truth": {
+    "expected_missing_ingredients": [
+      "olive_oil",
+      "butter",
+      "cauliflower",
+      "zucchini",
+      "salmon",
+      "asparagus",
+      "coconut_oil"
+    ],
+    "expected_nutrition_balance": {
+      "calories_within_10_percent": true,
+      "pfc_within_10_percent": true,
+      "daily_carbs_under_100g": true
+    }
+  }
+}
