@@ -134,8 +134,7 @@ Day 6: マルチモデル実験と並列処理
   results = await asyncio.gather(\*tasks)
 - 複数モデルでの性能比較:
   - GPT-4.1（高精度ベースライン）
-  - GPT-3.5-turbo（コスト効率）
-  - Claude-3-sonnet（中間バランス）
+  - GPT-4.1-mini（コスト効率）
 
 Day 7: 高度な最適化とドキュメント化
 

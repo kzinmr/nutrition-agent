@@ -182,7 +182,7 @@ async def test_cache_functionality():
     console.print("\n[yellow]Clearing cache...[/yellow]")
     client.clear_cache()
 
-    console.print(f"[yellow]Third search after cache clear...[/yellow]")
+    console.print("[yellow]Third search after cache clear...[/yellow]")
     start_time = time.time()
     foods3 = await client.search_food(search_term, max_results=2)
     third_time = time.time() - start_time

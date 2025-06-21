@@ -16,7 +16,6 @@ The Nutrition Agent takes your refrigerator inventory and creates 3-day meal pla
 
 - **Multi-tool Agent Architecture**: Uses FatSecret API for nutrition data and recipe search
 - **Robust Evaluation System**: Automated scoring based on nutrition accuracy and ingredient optimization
-- **Multiple Model Support**: Works with OpenAI GPT and Anthropic Claude models
 - **Interactive CLI**: User-friendly command-line interface with rich formatting
 - **Extensible Design**: Easy to add new dietary constraints and evaluation metrics
 
@@ -45,9 +44,9 @@ The agent follows a tool-using LLM loop pattern:
 
 ### Prerequisites
 
-- Python 3.9+
+- Python 3.12+
 - FatSecret API credentials ([Get them here](https://platform.fatsecret.com/docs/guides))
-- OpenAI API key (optional: Anthropic API key)
+- OpenAI API key
 
 ### Installation
 
@@ -100,7 +99,7 @@ python main.py sample t1 --model gpt-4.1 --days 3
 
 ```bash
 # Evaluate all scenarios with multiple models
-python evaluate.py run --models gpt-4.1 gpt-3.5-turbo
+python evaluate.py run --models gpt-4.1 gpt-4.1-mini
 
 # Single scenario evaluation
 python evaluate.py single t1.json --model gpt-4.1
@@ -196,7 +195,7 @@ shopping_list_score = 0.5 * jaccard_similarity(predicted, ground_truth)
 **Compare Models**:
 
 ```bash
-python evaluate.py compare --models gpt-4.1 gpt-3.5-turbo claude-3-sonnet
+python evaluate.py compare --models gpt-4.1 gpt-4.1-mini
 ```
 
 **Detailed Analysis**:
@@ -226,12 +225,6 @@ config = AgentConfig(
     max_tokens=4000
 )
 
-# Anthropic Claude models
-config = AgentConfig(
-    model_provider=ModelProvider.ANTHROPIC,
-    model_name="claude-3-sonnet-20240229",
-    temperature=0.7
-)
 ```
 
 ### Custom Prompts
@@ -273,14 +266,12 @@ Edit `config/prompts.yaml` to customize:
 | Model               | Avg Score | Nutrition Accuracy | Shopping List | Avg Time | Cost/Run |
 | ------------------- | --------- | ------------------ | ------------- | -------- | -------- |
 | **GPT-4.1**         | 0.847     | 0.432/0.5          | 0.415/0.5     | 23.2s    | $0.12    |
-| **GPT-3.5-turbo**   | 0.723     | 0.378/0.5          | 0.345/0.5     | 8.7s     | $0.03    |
-| **Claude-3-Sonnet** | 0.791     | 0.401/0.5          | 0.390/0.5     | 18.5s    | $0.08    |
+| **GPT-4.1-mini**    | 0.723     | 0.378/0.5          | 0.345/0.5     | 8.7s     | $0.03    |
 
 ### Key Findings:
 
 - **GPT-4.1**: Best overall performance, especially nutrition accuracy
-- **GPT-3.5-turbo**: Most cost-effective, acceptable performance for simpler scenarios
-- **Claude-3-Sonnet**: Good balance of performance and cost
+- **GPT-4.1-mini**: Most cost-effective, acceptable performance for simpler scenarios
 
 ## 🔮 Future Enhancements
 
@@ -306,14 +297,6 @@ Edit `config/prompts.yaml` to customize:
 4. Run evaluation: `python evaluate.py validate`
 5. Submit a pull request
 
-### Development Setup:
-
-```bash
-poetry install --with dev
-pre-commit install
-pytest --cov=agents --cov=tools
-```
-
 ## 📜 License
 
 MIT License - see [LICENSE](LICENSE) for details.
@@ -323,7 +306,3 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **Agent Engineering Course**: Foundation patterns and architectural guidance
 - **FatSecret Platform**: Nutrition database API
 - **OpenAI & Anthropic**: LLM capabilities that make this agent possible
-
----
-
-_Built with ❤️ for the Agent Engineering course assignment. Demonstrates practical application of agent patterns, tool use, and evaluation methodologies._

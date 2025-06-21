@@ -113,7 +113,7 @@ async def run_interactive() -> None:
     console.print("\n[yellow]Step 3: Choose AI model[/yellow]")
     model_choice = Prompt.ask(
         "Select model",
-        choices=["gpt-4.1", "gpt-3.5-turbo", "claude-3-sonnet"],
+        choices=["gpt-4.1", "gpt-4.1-mini"],
         default="gpt-4.1",
     )
 
@@ -125,11 +125,8 @@ async def run_interactive() -> None:
             temperature=0.7,
         )
     else:
-        config = AgentConfig(
-            model_provider=ModelProvider.ANTHROPIC,
-            model_name="claude-3-sonnet-20240229",
-            temperature=0.7,
-        )
+        console.print(f"[red]Unknown model: {model_choice}[/red]")
+        return
 
     # Get number of days
     days = typer.prompt("Number of days to plan", type=int, default=3)
@@ -180,11 +177,8 @@ async def run_sample(scenario: str, model: str, days: int) -> None:
             model_provider=ModelProvider.OPENAI, model_name=model, temperature=0.7
         )
     else:
-        config = AgentConfig(
-            model_provider=ModelProvider.ANTHROPIC,
-            model_name="claude-3-sonnet-20240229",
-            temperature=0.7,
-        )
+        console.print(f"[red]Unknown model: {model}[/red]")
+        return
 
     # Display scenario info
     console.print(Panel(f"[bold blue]Running Scenario: {scenario.upper()}[/bold blue]"))

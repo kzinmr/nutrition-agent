@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from rich.console import Console
@@ -22,7 +21,6 @@ console = Console()
 
 class ModelProvider(Enum):
     OPENAI = "openai"
-    ANTHROPIC = "anthropic"
 
 
 @dataclass
@@ -62,11 +60,7 @@ class BaseAgent:
 
         # Initialize LLM client
         if config.model_provider == ModelProvider.OPENAI:
-            self.client: AsyncOpenAI | AsyncAnthropic = AsyncOpenAI(
-                api_key=os.getenv("OPENAI_API_KEY")
-            )
-        elif config.model_provider == ModelProvider.ANTHROPIC:
-            self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            self.client: AsyncOpenAI = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         else:
             raise ValueError(f"Unsupported model provider: {config.model_provider}")
 
@@ -84,7 +78,7 @@ class BaseAgent:
             "parameters": parameters,
         }
 
-    def _format_tools_for_openai(self) -> list[dict[str, Any]]:
+    def format_tools_for_openai(self) -> list[dict[str, Any]]:
         """Format tools for OpenAI API."""
         tools = []
         for name, tool_info in self.tools.items():
@@ -100,25 +94,14 @@ class BaseAgent:
             )
         return tools
 
-    def _format_tools_for_anthropic(self) -> list[dict[str, Any]]:
-        """Format tools for Anthropic API."""
-        tools = []
-        for name, tool_info in self.tools.items():
-            tools.append(
-                {
-                    "name": name,
-                    "description": tool_info["description"],
-                    "input_schema": tool_info["parameters"],
-                }
-            )
-        return tools
-
     async def _get_llm_response(self) -> dict[str, Any]:
         """Get response from LLM with tool calling support."""
         if self.config.model_provider == ModelProvider.OPENAI:
             return await self._get_openai_response()
-        elif self.config.model_provider == ModelProvider.ANTHROPIC:
-            return await self._get_anthropic_response()
+        else:
+            raise ValueError(
+                f"Unsupported model provider: {self.config.model_provider}"
+            )
 
     async def _get_openai_response(self) -> dict[str, Any]:
         """Get response from OpenAI."""
@@ -127,7 +110,7 @@ class BaseAgent:
             response = await self.client.chat.completions.create(  # type: ignore[call-overload]
                 model=self.config.model_name,
                 messages=self.messages,
-                tools=self._format_tools_for_openai(),
+                tools=self.format_tools_for_openai(),
                 tool_choice="auto",
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
@@ -160,57 +143,6 @@ class BaseAgent:
 
         except Exception as e:
             console.print(f"[red]Error getting OpenAI response: {e}[/red]")
-            raise
-
-    async def _get_anthropic_response(self) -> dict[str, Any]:
-        """Get response from Anthropic."""
-        try:
-            # Convert messages to Anthropic format
-            anthropic_messages = []
-            system_message = None
-
-            for msg in self.messages:
-                if msg["role"] == "system":
-                    system_message = msg["content"]
-                else:
-                    anthropic_messages.append(msg)
-
-            assert isinstance(self.client, AsyncAnthropic)
-            response = await self.client.messages.create(
-                model=self.config.model_name,
-                messages=anthropic_messages,  # type: ignore[arg-type]
-                system=system_message,  # type: ignore[arg-type]
-                tools=self._format_tools_for_anthropic(),  # type: ignore[arg-type]
-                temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens,
-            )
-
-            # Handle tool calls
-            tool_calls = []
-            for content in response.content:
-                if content.type == "tool_use":
-                    tool_calls.append(
-                        ToolCall(
-                            name=content.name,
-                            arguments=content.input,
-                            id=content.id,  # type: ignore[arg-type]
-                        )
-                    )
-
-            # Get text content
-            text_content = ""
-            for content in response.content:
-                if content.type == "text":
-                    text_content += content.text
-
-            return {
-                "content": text_content,
-                "tool_calls": tool_calls if tool_calls else None,
-                "raw_message": response.model_dump(),
-            }
-
-        except Exception as e:
-            console.print(f"[red]Error getting Anthropic response: {e}[/red]")
             raise
 
     async def _execute_tool_calls(self, tool_calls: list[ToolCall]) -> list[ToolResult]:
@@ -258,24 +190,6 @@ class BaseAgent:
                         "content": content,
                     }
                 )
-
-        elif self.config.model_provider == ModelProvider.ANTHROPIC:
-            tool_results_content = []
-            for result in tool_results:
-                if result.error:
-                    content_dict = {"error": result.error}
-                else:
-                    content_dict = result.output
-
-                tool_results_content.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": result.tool_call_id,
-                        "content": json.dumps(content_dict),
-                    }
-                )
-
-            self.messages.append({"role": "user", "content": tool_results_content})
 
     def _display_response(
         self, content: str, tool_calls: list[ToolCall] | None = None
@@ -328,12 +242,8 @@ class BaseAgent:
             response = await self._get_llm_response()
 
             # Add assistant message to history
-            if self.config.model_provider == ModelProvider.OPENAI:
-                self.messages.append(response["raw_message"])
-            elif self.config.model_provider == ModelProvider.ANTHROPIC:
-                self.messages.append(
-                    {"role": "assistant", "content": response["raw_message"]["content"]}
-                )
+            # if self.config.model_provider == ModelProvider.OPENAI:
+            self.messages.append(response["raw_message"])
 
             # Display response
             self._display_response(response["content"], response["tool_calls"])

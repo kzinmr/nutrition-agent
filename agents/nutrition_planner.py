@@ -1,8 +1,11 @@
+import asyncio
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from openai import AsyncOpenAI
+from pydantic import BaseModel, Field, field_validator
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 
 from agents.base_agent import AgentConfig, BaseAgent
@@ -12,6 +15,60 @@ from tools.nutrition_calculator import (
 )
 
 console = Console()
+
+
+# Pydantic models for structured output
+class MealStructured(BaseModel):
+    """Structured representation of a meal for LLM output."""
+
+    name: str
+    ingredients: list[str]
+    calories: float
+    protein_g: float
+    fat_g: float
+    carbs_g: float
+    cooking_instructions: str = ""
+
+
+class DailyNutritionStructured(BaseModel):
+    """Structured representation of daily nutrition totals."""
+
+    total_calories: float
+    total_protein_g: float
+    total_fat_g: float
+    total_carbs_g: float
+    pfc_ratio: list[float] = Field(
+        description="PFC ratio as [protein%, fat%, carbs%]", min_length=3, max_length=3
+    )
+
+    @field_validator("pfc_ratio")
+    @classmethod
+    def validate_pfc_ratio(cls, v: list[float]) -> list[float]:
+        if len(v) != 3:
+            raise ValueError("PFC ratio must have exactly 3 values")
+        if abs(sum(v) - 100.0) > 1.0:  # Allow 1% tolerance
+            raise ValueError("PFC ratio percentages should sum to approximately 100%")
+        return v
+
+
+class MealPlanStructured(BaseModel):
+    """Structured representation of a single day's meal plan for LLM output."""
+
+    day: int
+    breakfast: MealStructured
+    lunch: MealStructured
+    dinner: MealStructured
+    daily_nutrition: DailyNutritionStructured
+    missing_ingredients: list[str]
+    notes: str = ""
+
+
+class MealPlansResponse(BaseModel):
+    """Structured response containing multiple days of meal plans."""
+
+    meal_plans: list[MealPlanStructured]
+    total_shopping_list: list[str]
+    general_notes: str = ""
 
 
 @dataclass
@@ -133,104 +190,239 @@ class NutritionPlannerAgent(BaseAgent):
         )
 
     async def generate_meal_plan(
-        self, inventory: Inventory, constraints: DietaryConstraints, days: int = 3
+        self,
+        inventory: Inventory,
+        constraints: DietaryConstraints,
+        days: int = 3,
     ) -> list[MealPlan]:
-        """Generate a multi-day meal plan based on inventory and constraints."""
+        """Generate a multi-day meal plan based on inventory and constraints.
+        This method uses tool calls to gather nutritional information and recipes,
+        then creates a structured meal plan.
+        """
 
-        # Format the user request
+        # Prepare inventory and constraints information
         inventory_text = "\n".join(
             [f"- {item['name']}: {item['amount_g']}g" for item in inventory.items]
         )
 
-        allergen_text = ""
-        if constraints.allergens:
-            allergen_text = f"\nAllergens to avoid: {', '.join(constraints.allergens)}"
-
-        restriction_text = ""
-        if constraints.dietary_restrictions:
-            restriction_text = (
-                f"\nDietary restrictions: {', '.join(constraints.dietary_restrictions)}"
-            )
-
-        user_request = f"""
-        I need a {days}-day meal plan with the following requirements:
+        # Create comprehensive prompt that encourages tool usage
+        prompt = f"""
+        Create a detailed {days}-day meal plan using the available tools and information provided.
         
-        Available ingredients:
+        AVAILABLE INGREDIENTS:
         {inventory_text}
         
-        Nutritional targets:
+        NUTRITIONAL TARGETS:
         - Daily calories: {constraints.daily_calories} kcal
         - PFC ratio: {constraints.pfc_ratio[0]}% protein, {constraints.pfc_ratio[1]}% fat, {constraints.pfc_ratio[2]}% carbohydrates
-        {allergen_text}
-        {restriction_text}
+        - Allergens to avoid: {", ".join(constraints.allergens) if constraints.allergens else "None"}
+        - Dietary restrictions: {", ".join(constraints.dietary_restrictions) if constraints.dietary_restrictions else "None"}
         
-        Please create a complete meal plan that:
-        1. Uses the available ingredients efficiently
-        2. Meets the nutritional targets within ±10%
-        3. Provides variety across days
-        4. Lists any missing ingredients needed
-        5. Includes portion sizes for each ingredient
+        INSTRUCTIONS:
+        1. First, use the search_food_nutrition tool to get accurate nutritional information for key available ingredients
+        2. Use the search_recipes_by_ingredients tool to find recipes that can be made with available ingredients
+        3. Use the calculate_pfc_balance tool to verify your meal plan meets the nutritional targets
+        4. Create realistic meals with accurate nutrition calculations based on the tool results
+        5. Provide detailed cooking instructions for each meal
+        6. List any missing ingredients needed for the meal plan
         
-        For each day, provide breakfast, lunch, and dinner with detailed nutritional information.
+        Please start by gathering nutritional information for the key ingredients, then search for suitable recipes, and finally create the meal plan with accurate nutritional data.
         """
 
+        # For OpenAI: Use regular chat completion with tools, then structured output
+
+        # Step 1: Let the LLM gather information using tools
         console.print(
-            Panel(user_request, title="📋 [bold blue]Meal Planning Request[/bold blue]")
+            "[yellow]E2E Mode: Gathering nutrition info and creating meal plan...[/yellow]"
         )
 
-        # Run the agent
-        response = await self.run(user_request)
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a professional nutritionist with access to nutrition tools. Use the available tools to gather accurate nutritional information before creating meal plans. Be thorough in your research.",
+            },
+            {"role": "user", "content": prompt},
+        ]
 
-        # Parse the response to extract meal plans
-        meal_plans = self._parse_meal_plan_response(response, days)
+        assert isinstance(self.client, AsyncOpenAI)
 
-        return meal_plans
+        # First interaction: Tool usage for information gathering
+        response = await self.client.chat.completions.create(
+            model=self.config.model_name,
+            messages=messages,  # type: ignore[arg-type]
+            tools=self.format_tools_for_openai(),  # type: ignore[arg-type]
+            tool_choice="auto",
+            temperature=self.config.temperature,
+        )
+        console.print(
+            f"[green]First response received: {response.choices[0].message}[/green]"
+        )
 
-    def _parse_meal_plan_response(self, response: str, days: int) -> list[MealPlan]:
-        """Parse the agent's response into structured meal plans."""
-        # This is a simplified parser - in production, you'd want more robust parsing
-        # or use structured output from the LLM
+        # Process tool calls if any
+        if response.choices[0].message.tool_calls:
+            # Execute tool calls
+            messages.append(response.choices[0].message)  # type: ignore[arg-type]
 
+            for tool_call in response.choices[0].message.tool_calls:
+                tool_result = await self._execute_tool_call(tool_call)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": str(tool_result),
+                    }
+                )
+
+            console.print(
+                f"[green]Additional new request is sent: {messages[2:]}[/green]"
+            )
+
+            # Continue conversation to let LLM process the tool results
+            follow_up_response = await self.client.chat.completions.create(
+                model=self.config.model_name,
+                messages=messages,  # type: ignore[arg-type]
+                tools=self.format_tools_for_openai(),  # type: ignore[arg-type]
+                tool_choice="auto",
+                temperature=self.config.temperature,
+            )
+            msg_idx = len(messages)
+
+            # Handle additional tool calls if needed
+            while follow_up_response.choices[0].message.tool_calls:
+                messages.append(follow_up_response.choices[0].message)  # type: ignore[arg-type]
+
+                for tool_call in follow_up_response.choices[0].message.tool_calls:
+                    tool_result = await self._execute_tool_call(tool_call)
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": str(tool_result),
+                        }
+                    )
+                console.print(
+                    f"[green]Additional new request is sent: {messages[msg_idx:]}[/green]"
+                )
+
+                follow_up_response = await self.client.chat.completions.create(
+                    model=self.config.model_name,
+                    messages=messages,  # type: ignore[arg-type]
+                    tools=self.format_tools_for_openai(),  # type: ignore[arg-type]
+                    tool_choice="auto",
+                    temperature=self.config.temperature,
+                )
+
+                msg_idx = len(messages)
+            else:
+                # # Parse the final response
+                # final_message = follow_up_response.choices[0].message.content
+                # console.print(f"[green]Final response received: {final_message}[/green]")
+                structured_completion = await self.client.beta.chat.completions.parse(
+                    model=self.config.model_name,
+                    messages=messages,  # type: ignore[arg-type]
+                    response_format=MealPlansResponse,
+                    temperature=0,
+                )
+                console.print(
+                    f"[green]Final response received: {structured_completion.choices[0].message}[/green]"
+                )
+                parsed_response = structured_completion.choices[0].message.parsed
+                if parsed_response:
+                    return self._convert_structured_to_meal_plans(parsed_response)
+                else:
+                    raise ValueError(
+                        "Failed to get structured response from OpenAI API"
+                    )
+
+        else:
+            console.print(
+                "[red]No tool calls made in the initial response. Please check the prompt and try again.[/red]"
+            )
+            raise ValueError(
+                "No tool calls made in the initial response. Please check the prompt and try again."
+            )
+
+    async def _execute_tool_call(self, tool_call: Any) -> Any:
+        """Execute a tool call and return the result."""
+        tool_name = tool_call.function.name
+
+        if tool_name not in self.tools:
+            return f"Error: Tool '{tool_name}' not found"
+
+        try:
+            # Parse arguments
+            args = json.loads(tool_call.function.arguments)
+
+            # Get the tool function
+            tool_func = self.tools[tool_name]["function"]
+
+            # Call the tool function
+            if asyncio.iscoroutinefunction(tool_func):
+                result = await tool_func(**args)
+            else:
+                result = tool_func(**args)
+
+            return result
+        except Exception as e:
+            return f"Error executing tool '{tool_name}': {str(e)}"
+
+    def _convert_structured_to_meal_plans(
+        self, structured_response: MealPlansResponse
+    ) -> list[MealPlan]:
+        """Convert structured Pydantic response to MealPlan dataclasses."""
         meal_plans = []
 
-        # For now, return a mock parsed result
-        # In a real implementation, you would parse the actual LLM response
-        for day in range(1, days + 1):
+        for plan_data in structured_response.meal_plans:
+            # Convert Pydantic models to dictionaries for MealPlan dataclass
+            breakfast_dict = {
+                "name": plan_data.breakfast.name,
+                "ingredients": plan_data.breakfast.ingredients,
+                "calories": plan_data.breakfast.calories,
+                "protein_g": plan_data.breakfast.protein_g,
+                "fat_g": plan_data.breakfast.fat_g,
+                "carbs_g": plan_data.breakfast.carbs_g,
+                "cooking_instructions": plan_data.breakfast.cooking_instructions,
+            }
+
+            lunch_dict = {
+                "name": plan_data.lunch.name,
+                "ingredients": plan_data.lunch.ingredients,
+                "calories": plan_data.lunch.calories,
+                "protein_g": plan_data.lunch.protein_g,
+                "fat_g": plan_data.lunch.fat_g,
+                "carbs_g": plan_data.lunch.carbs_g,
+                "cooking_instructions": plan_data.lunch.cooking_instructions,
+            }
+
+            dinner_dict = {
+                "name": plan_data.dinner.name,
+                "ingredients": plan_data.dinner.ingredients,
+                "calories": plan_data.dinner.calories,
+                "protein_g": plan_data.dinner.protein_g,
+                "fat_g": plan_data.dinner.fat_g,
+                "carbs_g": plan_data.dinner.carbs_g,
+                "cooking_instructions": plan_data.dinner.cooking_instructions,
+            }
+
+            daily_nutrition_dict = {
+                "total_calories": plan_data.daily_nutrition.total_calories,
+                "total_protein_g": plan_data.daily_nutrition.total_protein_g,
+                "total_fat_g": plan_data.daily_nutrition.total_fat_g,
+                "total_carbs_g": plan_data.daily_nutrition.total_carbs_g,
+                "pfc_ratio": tuple(
+                    plan_data.daily_nutrition.pfc_ratio
+                ),  # Convert list to tuple
+            }
+
             meal_plan = MealPlan(
-                day=day,
-                breakfast={
-                    "name": f"Day {day} Breakfast",
-                    "ingredients": [],
-                    "calories": 400,
-                    "protein_g": 20,
-                    "fat_g": 15,
-                    "carbs_g": 45,
-                },
-                lunch={
-                    "name": f"Day {day} Lunch",
-                    "ingredients": [],
-                    "calories": 600,
-                    "protein_g": 30,
-                    "fat_g": 20,
-                    "carbs_g": 65,
-                },
-                dinner={
-                    "name": f"Day {day} Dinner",
-                    "ingredients": [],
-                    "calories": 700,
-                    "protein_g": 35,
-                    "fat_g": 25,
-                    "carbs_g": 75,
-                },
-                daily_nutrition={
-                    "total_calories": 1700,
-                    "total_protein_g": 85,
-                    "total_fat_g": 60,
-                    "total_carbs_g": 185,
-                    "pfc_ratio": [30, 25, 45],
-                },
-                missing_ingredients=["carrots", "olive oil", "whole wheat bread"],
+                day=plan_data.day,
+                breakfast=breakfast_dict,
+                lunch=lunch_dict,
+                dinner=dinner_dict,
+                daily_nutrition=daily_nutrition_dict,
+                missing_ingredients=plan_data.missing_ingredients,
             )
+
             meal_plans.append(meal_plan)
 
         return meal_plans
@@ -302,7 +494,7 @@ class NutritionPlannerAgent(BaseAgent):
         # Collect all missing ingredients
         for plan in meal_plans:
             for ingredient in plan.missing_ingredients:
-                # Simple categorization - in production, use a proper food database
+                # FIXME: Simple categorization - in production, use a proper food database
                 if any(
                     word in ingredient.lower()
                     for word in ["chicken", "beef", "fish", "tofu"]

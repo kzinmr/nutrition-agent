@@ -125,6 +125,7 @@ class FatSecretClient:
             await asyncio.sleep(self._min_request_interval - time_since_last_request)
 
         # Prepare OAuth parameters
+        assert self.consumer_key is not None
         oauth_params = {
             "oauth_consumer_key": self.consumer_key,
             "oauth_nonce": str(random.randint(10000000, 99999999)),

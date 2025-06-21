@@ -31,13 +31,6 @@ def get_model_configs(models: list[str]) -> list[tuple[str, AgentConfig]]:
                 temperature=0.7,
                 max_tokens=4000,
             )
-        elif model.startswith("claude"):
-            config = AgentConfig(
-                model_provider=ModelProvider.ANTHROPIC,
-                model_name="claude-3-sonnet-20240229",
-                temperature=0.7,
-                max_tokens=4000,
-            )
         else:
             console.print(f"[red]Unknown model: {model}[/red]")
             continue
@@ -53,7 +46,7 @@ def run(
         "data/test_prompts", help="Directory containing test scenario JSON files"
     ),
     models: list[str] = typer.Option(
-        ["gpt-4.1", "gpt-3.5-turbo"], help="Models to evaluate"
+        ["gpt-4.1", "gpt-4.1-mini"], help="Models to evaluate"
     ),
     days: int = typer.Option(3, help="Number of days to plan"),
     output: str = typer.Option(
@@ -152,7 +145,7 @@ async def run_single_evaluation(scenario: str, model: str, days: int) -> None:
 @app.command()
 def compare(
     models: list[str] = typer.Option(
-        ["gpt-4.1", "gpt-3.5-turbo", "claude-3-sonnet"], help="Models to compare"
+        ["gpt-4.1", "gpt-4.1-mini"], help="Models to compare"
     ),
     output: str = typer.Option(
         "model_comparison.json", help="Output file for comparison"
