@@ -113,8 +113,8 @@ async def run_interactive() -> None:
     console.print("\n[yellow]Step 3: Choose AI model[/yellow]")
     model_choice = Prompt.ask(
         "Select model",
-        choices=["gpt-4o", "gpt-3.5-turbo", "claude-3-sonnet"],
-        default="gpt-4o",
+        choices=["gpt-4.1", "gpt-3.5-turbo", "claude-3-sonnet"],
+        default="gpt-4.1",
     )
 
     # Configure agent
@@ -156,7 +156,7 @@ async def run_interactive() -> None:
 @app.command()
 def sample(
     scenario: str = typer.Argument(..., help="Sample scenario name (t1, t2, t3)"),
-    model: str = typer.Option("gpt-4o", help="Model to use"),
+    model: str = typer.Option("gpt-4.1", help="Model to use"),
     days: int = typer.Option(3, help="Number of days to plan"),
 ) -> None:
     """Run with sample data."""

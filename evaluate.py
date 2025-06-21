@@ -53,7 +53,7 @@ def run(
         "data/test_prompts", help="Directory containing test scenario JSON files"
     ),
     models: list[str] = typer.Option(
-        ["gpt-4o", "gpt-3.5-turbo"], help="Models to evaluate"
+        ["gpt-4.1", "gpt-3.5-turbo"], help="Models to evaluate"
     ),
     days: int = typer.Option(3, help="Number of days to plan"),
     output: str = typer.Option(
@@ -100,7 +100,7 @@ async def run_evaluation(
 @app.command()
 def single(
     scenario: str = typer.Argument(help="Scenario file (e.g., t1.json)"),
-    model: str = typer.Option("gpt-4o", help="Model to use"),
+    model: str = typer.Option("gpt-4.1", help="Model to use"),
     days: int = typer.Option(3, help="Number of days to plan"),
 ) -> None:
     """Evaluate a single scenario with one model."""
@@ -152,7 +152,7 @@ async def run_single_evaluation(scenario: str, model: str, days: int) -> None:
 @app.command()
 def compare(
     models: list[str] = typer.Option(
-        ["gpt-4o", "gpt-3.5-turbo", "claude-3-sonnet"], help="Models to compare"
+        ["gpt-4.1", "gpt-3.5-turbo", "claude-3-sonnet"], help="Models to compare"
     ),
     output: str = typer.Option(
         "model_comparison.json", help="Output file for comparison"
