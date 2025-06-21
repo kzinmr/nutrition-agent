@@ -161,7 +161,7 @@ async def test_cache_functionality():
     import time
 
     start_time = time.time()
-    foods1 = await client.search_food(search_term, max_results=2)
+    _ = await client.search_food(search_term, max_results=2)
     first_time = time.time() - start_time
     console.print(f"First search took: {first_time:.2f}s")
 
@@ -169,7 +169,7 @@ async def test_cache_functionality():
         f"\n[yellow]Second search for '{search_term}' (should be cached)...[/yellow]"
     )
     start_time = time.time()
-    foods2 = await client.search_food(search_term, max_results=2)
+    _ = await client.search_food(search_term, max_results=2)
     second_time = time.time() - start_time
     console.print(f"Second search took: {second_time:.2f}s")
 
@@ -184,7 +184,7 @@ async def test_cache_functionality():
 
     console.print("[yellow]Third search after cache clear...[/yellow]")
     start_time = time.time()
-    foods3 = await client.search_food(search_term, max_results=2)
+    _ = await client.search_food(search_term, max_results=2)
     third_time = time.time() - start_time
     console.print(f"Third search took: {third_time:.2f}s")
 

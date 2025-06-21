@@ -1,4 +1,3 @@
-import asyncio
 import json
 from dataclasses import dataclass, field
 from typing import Any
@@ -10,9 +9,7 @@ from rich.table import Table
 
 from agents.base_agent import AgentConfig, BaseAgent
 from tools.fatsecret_tool import search_food_nutrition, search_recipes_by_ingredients
-from tools.nutrition_calculator import (
-    calculate_pfc_balance,
-)
+from tools.nutrition_calculator import calculate_pfc_balance
 
 console = Console()
 
@@ -196,8 +193,7 @@ class NutritionPlannerAgent(BaseAgent):
         days: int = 3,
     ) -> list[MealPlan]:
         """Generate a multi-day meal plan based on inventory and constraints.
-        This method uses tool calls to gather nutritional information and recipes,
-        then creates a structured meal plan.
+        This method uses the base agent's run method to handle tool calls automatically.
         """
 
         # Prepare inventory and constraints information
@@ -226,106 +222,75 @@ class NutritionPlannerAgent(BaseAgent):
         5. Provide detailed cooking instructions for each meal
         6. List any missing ingredients needed for the meal plan
         
-        Please start by gathering nutritional information for the key ingredients, then search for suitable recipes, and finally create the meal plan with accurate nutritional data.
+        After gathering all necessary information and creating the meal plan, provide the final result in the following JSON format:
+        {{
+            "meal_plans": [
+                {{
+                    "day": 1,
+                    "breakfast": {{
+                        "name": "meal name",
+                        "ingredients": ["ingredient1", "ingredient2"],
+                        "calories": 300,
+                        "protein_g": 20,
+                        "fat_g": 10,
+                        "carbs_g": 30,
+                        "cooking_instructions": "detailed instructions"
+                    }},
+                    "lunch": {{ ... similar structure ... }},
+                    "dinner": {{ ... similar structure ... }},
+                    "daily_nutrition": {{
+                        "total_calories": 2000,
+                        "total_protein_g": 100,
+                        "total_fat_g": 60,
+                        "total_carbs_g": 250,
+                        "pfc_ratio": [20.0, 27.0, 53.0]
+                    }},
+                    "missing_ingredients": ["ingredient1", "ingredient2"],
+                    "notes": "any additional notes"
+                }}
+            ],
+            "total_shopping_list": ["all missing ingredients"],
+            "general_notes": "general notes about the meal plan"
+        }}
         """
 
-        # For OpenAI: Use regular chat completion with tools, then structured output
-
-        # Step 1: Let the LLM gather information using tools
+        # Use the base agent's run method
         console.print(
-            "[yellow]E2E Mode: Gathering nutrition info and creating meal plan...[/yellow]"
+            "[yellow]Using base agent to gather nutrition info and create meal plan...[/yellow]"
         )
 
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a professional nutritionist with access to nutrition tools. Use the available tools to gather accurate nutritional information before creating meal plans. Be thorough in your research.",
-            },
-            {"role": "user", "content": prompt},
-        ]
+        # Run the agent with the prompt
+        response = await self.run(prompt)
 
-        assert isinstance(self.client, AsyncOpenAI)
+        # Parse the JSON response
+        try:
+            # Extract JSON from the response
+            json_start = response.find("{")
+            json_end = response.rfind("}") + 1
+            if json_start != -1 and json_end > json_start:
+                json_str = response[json_start:json_end]
+                meal_plans_data = json.loads(json_str)
 
-        # First interaction: Tool usage for information gathering
-        response = await self.client.chat.completions.create(
-            model=self.config.model_name,
-            messages=messages,  # type: ignore[arg-type]
-            tools=self.format_tools_for_openai(),  # type: ignore[arg-type]
-            tool_choice="auto",
-            temperature=self.config.temperature,
-        )
-        console.print(
-            f"[green]First response received: {response.choices[0].message}[/green]"
-        )
-
-        # Process tool calls if any
-        if response.choices[0].message.tool_calls:
-            # Execute tool calls
-            messages.append(response.choices[0].message)  # type: ignore[arg-type]
-
-            for tool_call in response.choices[0].message.tool_calls:
-                tool_result = await self._execute_tool_call(tool_call)
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": str(tool_result),
-                    }
-                )
-
-            console.print(
-                f"[green]Additional new request is sent: {messages[2:]}[/green]"
-            )
-
-            # Continue conversation to let LLM process the tool results
-            follow_up_response = await self.client.chat.completions.create(
-                model=self.config.model_name,
-                messages=messages,  # type: ignore[arg-type]
-                tools=self.format_tools_for_openai(),  # type: ignore[arg-type]
-                tool_choice="auto",
-                temperature=self.config.temperature,
-            )
-            msg_idx = len(messages)
-
-            # Handle additional tool calls if needed
-            while follow_up_response.choices[0].message.tool_calls:
-                messages.append(follow_up_response.choices[0].message)  # type: ignore[arg-type]
-
-                for tool_call in follow_up_response.choices[0].message.tool_calls:
-                    tool_result = await self._execute_tool_call(tool_call)
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": str(tool_result),
-                        }
-                    )
-                console.print(
-                    f"[green]Additional new request is sent: {messages[msg_idx:]}[/green]"
-                )
-
-                follow_up_response = await self.client.chat.completions.create(
-                    model=self.config.model_name,
-                    messages=messages,  # type: ignore[arg-type]
-                    tools=self.format_tools_for_openai(),  # type: ignore[arg-type]
-                    tool_choice="auto",
-                    temperature=self.config.temperature,
-                )
-
-                msg_idx = len(messages)
+                # Convert to MealPlansResponse structure
+                structured_response = MealPlansResponse(**meal_plans_data)
+                return self._convert_structured_to_meal_plans(structured_response)
             else:
-                # # Parse the final response
-                # final_message = follow_up_response.choices[0].message.content
-                # console.print(f"[green]Final response received: {final_message}[/green]")
+                # If no JSON found, try using structured output
+                console.print(
+                    "[yellow]No valid JSON found in response, trying structured output...[/yellow]"
+                )
+
+                # Get the message history from the last run
+                assert isinstance(self.client, AsyncOpenAI)
+
+                # Use structured output with the existing message history
                 structured_completion = await self.client.beta.chat.completions.parse(
                     model=self.config.model_name,
-                    messages=messages,  # type: ignore[arg-type]
+                    messages=self.messages,  # type: ignore[arg-type]
                     response_format=MealPlansResponse,
                     temperature=0,
                 )
-                console.print(
-                    f"[green]Final response received: {structured_completion.choices[0].message}[/green]"
-                )
+
                 parsed_response = structured_completion.choices[0].message.parsed
                 if parsed_response:
                     return self._convert_structured_to_meal_plans(parsed_response)
@@ -334,37 +299,10 @@ class NutritionPlannerAgent(BaseAgent):
                         "Failed to get structured response from OpenAI API"
                     )
 
-        else:
-            console.print(
-                "[red]No tool calls made in the initial response. Please check the prompt and try again.[/red]"
-            )
-            raise ValueError(
-                "No tool calls made in the initial response. Please check the prompt and try again."
-            )
-
-    async def _execute_tool_call(self, tool_call: Any) -> Any:
-        """Execute a tool call and return the result."""
-        tool_name = tool_call.function.name
-
-        if tool_name not in self.tools:
-            return f"Error: Tool '{tool_name}' not found"
-
-        try:
-            # Parse arguments
-            args = json.loads(tool_call.function.arguments)
-
-            # Get the tool function
-            tool_func = self.tools[tool_name]["function"]
-
-            # Call the tool function
-            if asyncio.iscoroutinefunction(tool_func):
-                result = await tool_func(**args)
-            else:
-                result = tool_func(**args)
-
-            return result
-        except Exception as e:
-            return f"Error executing tool '{tool_name}': {str(e)}"
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Failed to parse JSON response: {e}[/red]")
+            console.print(f"[red]Response was: {response}[/red]")
+            raise ValueError(f"Failed to parse meal plan response: {e}")
 
     def _convert_structured_to_meal_plans(
         self, structured_response: MealPlansResponse

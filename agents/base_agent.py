@@ -165,7 +165,14 @@ class BaseAgent:
         """Execute a single tool call."""
         try:
             tool_func = self.tools[tool_call.name]["function"]
-            result = await tool_func(**tool_call.arguments)
+
+            # Check if the function is async
+            if asyncio.iscoroutinefunction(tool_func):
+                result = await tool_func(**tool_call.arguments)
+            else:
+                # For sync functions, run them directly
+                result = tool_func(**tool_call.arguments)
+
             return ToolResult(tool_call_id=tool_call.id, output=result)
         except Exception as e:
             return ToolResult(tool_call_id=tool_call.id, output=None, error=str(e))
