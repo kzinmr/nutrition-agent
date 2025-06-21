@@ -1,12 +1,17 @@
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import os
+import random
 import time
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
+import requests
 from dotenv import load_dotenv
-from requests_oauthlib import OAuth1Session
 
 load_dotenv()
 
@@ -66,16 +71,44 @@ class FatSecretClient:
                 "FatSecret API credentials not found. Please set FATSECRET_CONSUMER_KEY and FATSECRET_CONSUMER_SECRET"
             )
 
-        self.oauth = OAuth1Session(
-            self.consumer_key,
-            client_secret=self.consumer_secret,
-            signature_method="HMAC-SHA1",
-            signature_type="auth_header",
-        )
-
         self._cache: dict[str, Any] = {}
         self._last_request_time: float = 0
         self._min_request_interval = 0.1  # Rate limiting
+
+    def _generate_oauth_signature(
+        self, method: str, url: str, params: dict[str, str]
+    ) -> str:
+        """Generate OAuth 1.0a HMAC-SHA1 signature"""
+        # Encode parameters
+        encoded_params = {}
+        for key, value in params.items():
+            encoded_params[key] = urllib.parse.quote(str(value), safe="")
+
+        # Sort and concatenate parameters
+        sorted_params = sorted(encoded_params.items())
+        param_string = "&".join([f"{k}={v}" for k, v in sorted_params])
+
+        # Create signature base string
+        signature_base = "&".join(
+            [
+                method.upper(),
+                urllib.parse.quote(url, safe=""),
+                urllib.parse.quote(param_string, safe=""),
+            ]
+        )
+
+        # Create signing key
+        signing_key = f"{self.consumer_secret}&"
+
+        # Generate HMAC-SHA1 signature
+        hashed = hmac.new(
+            signing_key.encode("utf-8"), signature_base.encode("utf-8"), hashlib.sha1
+        )
+
+        # Base64 encode the signature
+        signature = base64.b64encode(hashed.digest()).decode("utf-8")
+
+        return signature
 
     async def _make_request(
         self, method: str, params: dict[str, str]
@@ -91,22 +124,46 @@ class FatSecretClient:
         if time_since_last_request < self._min_request_interval:
             await asyncio.sleep(self._min_request_interval - time_since_last_request)
 
-        params["method"] = method
-        params["format"] = "json"
+        # Prepare OAuth parameters
+        oauth_params = {
+            "oauth_consumer_key": self.consumer_key,
+            "oauth_nonce": str(random.randint(10000000, 99999999)),
+            "oauth_signature_method": "HMAC-SHA1",
+            "oauth_timestamp": str(int(time.time())),
+            "oauth_version": "1.0",
+            "format": "json",
+            "method": method,
+        }
+
+        # Combine OAuth and API parameters
+        all_params = {**oauth_params, **params}
+
+        # Generate OAuth signature
+        signature = self._generate_oauth_signature("GET", self.BASE_URL, all_params)
+
+        # Add signature to parameters
+        all_params["oauth_signature"] = signature
 
         try:
-            response = self.oauth.get(self.BASE_URL, params=params)
+            # Make GET request with all parameters
+            response = requests.get(self.BASE_URL, params=all_params)
             response.raise_for_status()
 
             self._last_request_time = time.time()
             data = response.json()
 
+            # Check for API errors
             if "error" in data:
-                raise FatSecretAPIError(f"API Error: {data['error']['message']}")
+                error_msg = data.get("error", {}).get("message", "Unknown error")
+                raise FatSecretAPIError(f"API Error: {error_msg}")
 
             self._cache[cache_key] = data
             return data  # type: ignore[no-any-return]
 
+        except requests.exceptions.HTTPError as e:
+            raise FatSecretAPIError(
+                f"HTTP Error {e.response.status_code}: {e.response.text}"
+            )
         except Exception as e:
             raise FatSecretAPIError(f"Request failed: {str(e)}")
 
