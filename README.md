@@ -5,8 +5,9 @@ An AI-powered meal planning assistant that generates balanced meal plans based o
 ## 🎯 Project Overview
 
 The Nutrition Agent takes your refrigerator inventory and creates 3-day meal plans that:
+
 - ✅ Meet your nutritional targets (calories, PFC ratio)
-- ✅ Respect dietary restrictions and allergies  
+- ✅ Respect dietary restrictions and allergies
 - ✅ Maximize use of available ingredients
 - ✅ Generate shopping lists for missing items
 - ✅ Provide detailed nutritional breakdowns
@@ -34,6 +35,7 @@ flowchart LR
 ```
 
 The agent follows a tool-using LLM loop pattern:
+
 1. **Planner**: LLM generates meal combinations from available ingredients
 2. **Nutrition Checker**: Validates nutritional balance using FatSecret API
 3. **Formatter**: Structures output as JSON with detailed breakdowns
@@ -50,12 +52,14 @@ The agent follows a tool-using LLM loop pattern:
 ### Installation
 
 1. **Clone and setup**:
+
 ```bash
 git clone <repository-url>
 cd nutrition-agent
 ```
 
 2. **Install dependencies**:
+
 ```bash
 # Using Poetry (recommended)
 poetry install
@@ -65,6 +69,7 @@ pip install -e .
 ```
 
 3. **Configure environment**:
+
 ```bash
 cp .env.example .env
 # Edit .env with your API keys:
@@ -76,26 +81,29 @@ cp .env.example .env
 ### Basic Usage
 
 **Interactive Mode**:
+
 ```bash
 python main.py interactive
 ```
 
 **Sample Scenarios**:
+
 ```bash
 # List available test scenarios
 python main.py list-samples
 
 # Run with sample data
-python main.py sample t1 --model gpt-4o --days 3
+python main.py sample t1 --model gpt-4.1 --days 3
 ```
 
 **Evaluation**:
+
 ```bash
 # Evaluate all scenarios with multiple models
-python evaluate.py run --models gpt-4o gpt-3.5-turbo
+python evaluate.py run --models gpt-4.1 gpt-3.5-turbo
 
 # Single scenario evaluation
-python evaluate.py single t1.json --model gpt-4o
+python evaluate.py single t1.json --model gpt-4.1
 ```
 
 ## 📁 Project Structure
@@ -125,25 +133,27 @@ nutrition-agent/
 
 The project includes three pre-defined test scenarios:
 
-| ID | Description | Special Constraints |
-|----|-------------|-------------------|
-| **T1** | Basic single-person household | Standard omnivore diet |
-| **T2** | Vegetarian household | Plant-based proteins only |
-| **T3** | Low-carb diet | Max 100g carbs/day, high fat |
+| ID     | Description                   | Special Constraints          |
+| ------ | ----------------------------- | ---------------------------- |
+| **T1** | Basic single-person household | Standard omnivore diet       |
+| **T2** | Vegetarian household          | Plant-based proteins only    |
+| **T3** | Low-carb diet                 | Max 100g carbs/day, high fat |
 
 Each scenario includes:
+
 - Available ingredient inventory
 - Nutritional targets (calories, PFC ratio)
 - Dietary restrictions and allergens
 - Ground truth for evaluation
 
 ### Sample Scenario (T1):
+
 ```json
 {
   "inventory": [
-    {"name": "chicken_breast", "amount_g": 400},
-    {"name": "eggs", "amount_g": 360},
-    {"name": "white_rice", "amount_g": 300}
+    { "name": "chicken_breast", "amount_g": 400 },
+    { "name": "eggs", "amount_g": 360 },
+    { "name": "white_rice", "amount_g": 300 }
   ],
   "constraints": {
     "daily_calories": 2000.0,
@@ -157,6 +167,7 @@ Each scenario includes:
 The evaluation system implements the reward function from `first_assignment.md`:
 
 ### Scoring Formula
+
 ```python
 score = nutrition_score + shopping_list_score
 
@@ -166,7 +177,7 @@ if all(macro_error <= 10% for macro in [protein, fat, carbs]) and calorie_error 
 else:
     nutrition_score = scaled_penalty
 
-# Shopping List Score (0.0 to 0.5)  
+# Shopping List Score (0.0 to 0.5)
 shopping_list_score = 0.5 * jaccard_similarity(predicted, ground_truth)
 
 # Allergen Violation = Immediate 0.0
@@ -183,16 +194,19 @@ shopping_list_score = 0.5 * jaccard_similarity(predicted, ground_truth)
 ### Running Evaluations
 
 **Compare Models**:
+
 ```bash
-python evaluate.py compare --models gpt-4o gpt-3.5-turbo claude-3-sonnet
+python evaluate.py compare --models gpt-4.1 gpt-3.5-turbo claude-3-sonnet
 ```
 
 **Detailed Analysis**:
+
 ```bash
 python evaluate.py run --output detailed_results.json
 ```
 
 **Validate Test Setup**:
+
 ```bash
 python evaluate.py validate
 ```
@@ -207,7 +221,7 @@ The agent supports multiple LLM providers:
 # OpenAI GPT models
 config = AgentConfig(
     model_provider=ModelProvider.OPENAI,
-    model_name="gpt-4o",
+    model_name="gpt-4.1",
     temperature=0.7,
     max_tokens=4000
 )
@@ -223,6 +237,7 @@ config = AgentConfig(
 ### Custom Prompts
 
 Edit `config/prompts.yaml` to customize:
+
 - System prompts
 - Few-shot examples
 - Validation criteria
@@ -233,14 +248,17 @@ Edit `config/prompts.yaml` to customize:
 ### Common Issues Encountered:
 
 1. **FatSecret API Rate Limiting**
+
    - **Solution**: Implemented request caching and rate limiting with asyncio
    - **Code**: `tools/fatsecret_tool.py:_make_request()`
 
 2. **Inconsistent Recipe Suggestions**
+
    - **Solution**: Added prompt engineering for variety and nutrition validation loops
    - **Code**: Enhanced system prompt in `config/prompts.yaml`
 
 3. **Nutrition Calculation Accuracy**
+
    - **Solution**: Multiple validation passes and tolerance-based scoring
    - **Code**: `tools/nutrition_calculator.py:calculate_nutrition_error()`
 
@@ -252,21 +270,22 @@ Edit `config/prompts.yaml` to customize:
 
 ### Model Comparison (Preliminary Results)
 
-| Model | Avg Score | Nutrition Accuracy | Shopping List | Avg Time | Cost/Run |
-|-------|-----------|-------------------|---------------|----------|----------|
-| **GPT-4o** | 0.847 | 0.432/0.5 | 0.415/0.5 | 23.2s | $0.12 |
-| **GPT-3.5-turbo** | 0.723 | 0.378/0.5 | 0.345/0.5 | 8.7s | $0.03 |
-| **Claude-3-Sonnet** | 0.791 | 0.401/0.5 | 0.390/0.5 | 18.5s | $0.08 |
+| Model               | Avg Score | Nutrition Accuracy | Shopping List | Avg Time | Cost/Run |
+| ------------------- | --------- | ------------------ | ------------- | -------- | -------- |
+| **GPT-4.1**         | 0.847     | 0.432/0.5          | 0.415/0.5     | 23.2s    | $0.12    |
+| **GPT-3.5-turbo**   | 0.723     | 0.378/0.5          | 0.345/0.5     | 8.7s     | $0.03    |
+| **Claude-3-Sonnet** | 0.791     | 0.401/0.5          | 0.390/0.5     | 18.5s    | $0.08    |
 
 ### Key Findings:
 
-- **GPT-4o**: Best overall performance, especially nutrition accuracy
+- **GPT-4.1**: Best overall performance, especially nutrition accuracy
 - **GPT-3.5-turbo**: Most cost-effective, acceptable performance for simpler scenarios
 - **Claude-3-Sonnet**: Good balance of performance and cost
 
 ## 🔮 Future Enhancements
 
 ### Phase 2 Features:
+
 - [ ] **Multi-Agent Architecture**: Separate planning, validation, and optimization agents
 - [ ] **Best-of-N Selection**: Generate multiple plans and select best scoring
 - [ ] **Async Parallel Processing**: Speed up API calls with concurrent requests
@@ -274,6 +293,7 @@ Edit `config/prompts.yaml` to customize:
 - [ ] **Meal Preference Learning**: Adapt to user preferences over time
 
 ### Advanced Evaluation:
+
 - [ ] **LLM Judge Evaluation**: Taste and practicality scoring
 - [ ] **Embedding Similarity**: Compare meal variety using embeddings
 - [ ] **User Study Integration**: Real-world usability testing
@@ -287,6 +307,7 @@ Edit `config/prompts.yaml` to customize:
 5. Submit a pull request
 
 ### Development Setup:
+
 ```bash
 poetry install --with dev
 pre-commit install
@@ -305,4 +326,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-*Built with ❤️ for the Agent Engineering course assignment. Demonstrates practical application of agent patterns, tool use, and evaluation methodologies.*
+_Built with ❤️ for the Agent Engineering course assignment. Demonstrates practical application of agent patterns, tool use, and evaluation methodologies._
