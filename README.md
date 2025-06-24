@@ -20,18 +20,6 @@ The Nutrition Agent takes your refrigerator inventory and creates 3-day meal pla
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    subgraph Agent
-        A[Planner<br>(LLM)] -->|candidate meals| B
-        B[FatSecret Nutrition Checker & Recipe Search<br>(tool call)]
-        B -->|nutrition OK<br>(tool call)| C[Formatter]
-        B -->|NG→re-propose| A
-    end
-    User -->|inventory & targets| A
-    C -->|meal plan & shopping list| User
-```
-
 The agent follows a tool-using LLM loop pattern:
 
 1. **Planner**: LLM generates meal combinations from available ingredients
