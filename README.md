@@ -232,20 +232,7 @@ TODO: `config/prompts.yaml` is used only by the system prompt. The others are ha
 - [ ] **LLM Judge Evaluation**: Taste and practicality scoring
 - [ ] **Embedding Similarity**: Compare meal variety using embeddings
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Run tests: `pytest tests/`
-4. Run evaluation: `python evaluate.py validate`
-5. Submit a pull request
-
-## License
-
-MIT License (pending - LICENSE file to be added).
-
 ## Acknowledgments
 
-- **Agent Engineering Course**: Foundation patterns and architectural guidance
 - **FatSecret Platform**: Nutrition database API
 - **OpenAI**: LLM capabilities that make this agent possible
