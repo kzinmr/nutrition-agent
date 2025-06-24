@@ -1,0 +1,30 @@
+{
+  "id": "t4",
+  "description": "Pregnancy meal planning",
+  "notes": "Focus on folate, iron, calcium, DHA; avoid high-mercury fish, raw or unpasteurised foods, alcohol, and excess caffeine.",
+  "inventory": [
+    {"name": "salmon_fillet", "amount_g": 300, "unit": "g"},
+    {"name": "eggs", "amount_g": 300, "unit": "g"},
+    {"name": "spinach", "amount_g": 200, "unit": "g"},
+    {"name": "sweet_potato", "amount_g": 400, "unit": "g"},
+    {"name": "greek_yogurt", "amount_g": 500, "unit": "g"},
+    {"name": "whole_grain_bread", "amount_g": 300, "unit": "g"},
+    {"name": "almond_butter", "amount_g": 200, "unit": "g"},
+    {"name": "lentils_canned", "amount_g": 400, "unit": "g"},
+    {"name": "avocado", "amount_g": 200, "unit": "g"},
+    {"name": "pasteurised_milk", "amount_g": 1000, "unit": "g"}
+  ],
+  "constraints": {
+    "daily_calories": 2200.0,
+    "pfc_ratio": [25.0, 30.0, 45.0],
+    "allergens": null,
+    "dietary_restrictions": [
+      "pregnancy",
+      "no_raw_fish",
+      "no_high_mercury_fish",
+      "no_unpasteurised_cheese",
+      "no_alcohol",
+      "limit_caffeine_200mg"
+    ]
+  }
+}

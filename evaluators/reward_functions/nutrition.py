@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -14,10 +14,11 @@ from agents.nutrition_planner import (
     MealPlan,
     NutritionPlannerAgent,
 )
+from evaluators.evaluator_manager import EvaluatorManager
 from tools.nutrition_calculator import (
+    MealNutrition,
     NutritionCalculator,
     NutritionTarget,
-    MealNutrition,
 )
 
 console = Console()
@@ -29,17 +30,19 @@ class EvaluationResult:
     model_name: str
     score: float
     nutrition_score: float
-    shopping_list_score: float
-    allergen_violation: bool
     violations: list[str]
     execution_time: float
     nutrition_errors: dict[str, float]
-    jaccard_similarity: float
+    constraint_satisfaction_score: float = 0.0
+    inventory_utilization_score: float = 0.0
+    quality_scores: dict[str, float] = field(default_factory=dict)
+    detailed_violations: dict[str, list[str]] = field(default_factory=dict)
 
 
 class NutritionEvaluator:
     def __init__(self) -> None:
         self.tolerance_pct = 10.0  # 10% tolerance for nutrition targets
+        self.evaluator_manager = EvaluatorManager()
 
     def calculate_nutrition_score(
         self, actual_nutrition: dict[str, Any], target_constraints: DietaryConstraints
@@ -80,88 +83,86 @@ class NutritionEvaluator:
             "carbs": errors_raw["carbs_error"],
         }
 
-        # Calculate overall nutrition score (0.0 to 0.5)
+        # Calculate overall nutrition score (0.0 to 1.0)
         max_error = max(errors.values()) if errors else 0
         if max_error <= self.tolerance_pct:
-            nutrition_score = 0.5  # Perfect score
+            nutrition_score = 1.0  # Perfect score
         else:
-            # Linear decrease from 0.5 to 0.0 as error increases from 10% to 50%
+            # Linear decrease from 1.0 to 0.0 as error increases from 10% to 50%
             nutrition_score = max(
-                0.0, 0.5 * (1 - (max_error - self.tolerance_pct) / 40)
+                0.0, 1.0 * (1 - (max_error - self.tolerance_pct) / 40)
             )
 
         return nutrition_score, errors, violations
 
-    def calculate_shopping_list_score(
-        self, predicted_missing: list[str], ground_truth_missing: list[str]
-    ) -> float:
+    def calculate_constraint_satisfaction_score(
+        self,
+        meal_plans: list[MealPlan],
+        constraints: DietaryConstraints,
+        inventory: Inventory,
+    ) -> tuple[float, dict[str, list[str]]]:
         """
-        Calculate Jaccard similarity between predicted and ground truth missing ingredients.
+        Evaluate satisfaction of dietary constraints using the new evaluator system.
+
+        Returns:
+            (score, detailed_violations)
         """
-        if not ground_truth_missing and not predicted_missing:
-            return 1.0  # Both empty, perfect match
+        score, details = self.evaluator_manager.evaluate_constraint_satisfaction(
+            meal_plans, constraints, inventory
+        )
+        violations = details.get("violations", {})
+        return score, violations
 
-        # Convert to sets for easier comparison
-        pred_set = set(predicted_missing)
-        truth_set = set(ground_truth_missing)
-
-        # Calculate Jaccard similarity
-        intersection = len(pred_set.intersection(truth_set))
-        union = len(pred_set.union(truth_set))
-
-        if union == 0:
-            return 1.0
-
-        jaccard = intersection / union
-        return jaccard * 0.5  # Shopping list contributes 0.5 to total score
-
-    def check_allergen_violations(
-        self, meal_plans: list[MealPlan], allergens: list[str]
-    ) -> bool:
+    def calculate_inventory_utilization_score(
+        self,
+        meal_plans: list[MealPlan],
+        constraints: DietaryConstraints,
+        inventory: Inventory,
+    ) -> tuple[float, dict[str, Any]]:
         """
-        Check if any allergens appear in the meal plans.
+        Evaluate how efficiently the available inventory is utilized using the new evaluator system.
+
+        Returns:
+            (score, detailed_metrics)
         """
-        if not allergens:
-            return False
+        return self.evaluator_manager.evaluate_inventory_utilization(
+            meal_plans, constraints, inventory
+        )
 
-        # Simple keyword-based check
-        # In production, this would use a proper allergen database
-        for plan in meal_plans:
-            for meal_type in ["breakfast", "lunch", "dinner"]:
-                meal = getattr(plan, meal_type)
-                meal_text = json.dumps(meal).lower()
+    def calculate_quality_scores(
+        self,
+        meal_plans: list[MealPlan],
+        constraints: DietaryConstraints,
+        inventory: Inventory,
+    ) -> dict[str, Any]:
+        """
+        Calculate all registered quality scores using the new evaluator system.
 
-                for allergen in allergens:
-                    allergen_keywords = {
-                        "dairy": ["milk", "cheese", "butter", "cream", "yogurt"],
-                        "nuts": ["almond", "peanut", "walnut", "cashew", "pecan"],
-                        "gluten": ["wheat", "bread", "pasta", "flour", "barley"],
-                        "soy": ["soy", "tofu", "tempeh", "miso"],
-                        "shellfish": ["shrimp", "crab", "lobster", "oyster"],
-                        "fish": ["salmon", "tuna", "cod", "trout"],
-                    }
-
-                    keywords = allergen_keywords.get(
-                        allergen.lower(), [allergen.lower()]
-                    )
-                    if any(keyword in meal_text for keyword in keywords):
-                        return True
-
-        return False
+        Returns:
+            Dictionary with quality scores and details
+        """
+        return self.evaluator_manager.evaluate_quality_scores(
+            meal_plans, constraints, inventory
+        )
 
     def calculate_overall_score(
         self,
         nutrition_score: float,
-        shopping_list_score: float,
-        allergen_violation: bool,
+        constraint_satisfaction_score: float,
+        inventory_utilization_score: float,
+        quality_scores: dict[str, Any],
+        has_critical_failure: bool = False,
     ) -> float:
         """
-        Calculate overall score (0.0 to 1.0).
+        Calculate overall score (0.0 to 1.0) using the new weighted evaluation system.
         """
-        if allergen_violation:
-            return 0.0  # Immediate fail for allergen violations
-
-        return nutrition_score + shopping_list_score
+        return self.evaluator_manager.calculate_overall_score(
+            nutrition_score,
+            constraint_satisfaction_score,
+            inventory_utilization_score,
+            quality_scores,
+            has_critical_failure,
+        )
 
     async def evaluate_scenario(
         self, scenario_path: Path, agent_config: AgentConfig, days: int = 3
@@ -180,7 +181,6 @@ class NutritionEvaluator:
         scenario_id = scenario_data["id"]
         inventory = Inventory(items=scenario_data["inventory"])
         constraints = DietaryConstraints(**scenario_data["constraints"])
-        ground_truth = scenario_data.get("ground_truth", {})
 
         # Create agent and generate meal plan
         agent = NutritionPlannerAgent(agent_config)
@@ -208,34 +208,50 @@ class NutritionEvaluator:
                 / len(meal_plans),
             }
 
-            # Calculate scores
-            nutrition_score, nutrition_errors, violations = (
+            # Calculate all evaluation scores
+            nutrition_score, nutrition_errors, nutrition_violations = (
                 self.calculate_nutrition_score(daily_nutrition, constraints)
             )
 
-            # Get predicted missing ingredients
-            predicted_missing = []
-            for plan in meal_plans:
-                predicted_missing.extend(plan.missing_ingredients)
-            predicted_missing = list(set(predicted_missing))  # Remove duplicates
-
-            shopping_list_score = self.calculate_shopping_list_score(
-                predicted_missing, ground_truth.get("expected_missing_ingredients", [])
+            # Check for critical failures first
+            has_critical_failure, critical_failure_msgs = (
+                self.evaluator_manager.check_critical_failures(
+                    meal_plans, constraints, inventory
+                )
             )
 
-            jaccard_similarity = (
-                shopping_list_score / 0.5 if shopping_list_score > 0 else 0
+            # Calculate new mandatory evaluations
+            constraint_satisfaction_score, detailed_violations = (
+                self.calculate_constraint_satisfaction_score(
+                    meal_plans, constraints, inventory
+                )
             )
 
-            # Check allergen violations
-            allergen_violation = self.check_allergen_violations(
-                meal_plans, constraints.allergens or []
+            inventory_utilization_score, inventory_details = (
+                self.calculate_inventory_utilization_score(
+                    meal_plans, constraints, inventory
+                )
             )
 
-            # Calculate overall score
+            # Calculate extensible quality scores
+            quality_scores = self.calculate_quality_scores(
+                meal_plans, constraints, inventory
+            )
+
+            # Calculate overall score using new system
             overall_score = self.calculate_overall_score(
-                nutrition_score, shopping_list_score, allergen_violation
+                nutrition_score,
+                constraint_satisfaction_score,
+                inventory_utilization_score,
+                quality_scores,
+                has_critical_failure,
             )
+
+            # Combine all violations
+            all_violations = nutrition_violations.copy()
+            all_violations.extend(critical_failure_msgs)
+            for _, violation_list in detailed_violations.items():
+                all_violations.extend(violation_list)
 
             execution_time = time.time() - start_time
 
@@ -244,12 +260,13 @@ class NutritionEvaluator:
                 model_name=agent_config.model_name,
                 score=overall_score,
                 nutrition_score=nutrition_score,
-                shopping_list_score=shopping_list_score,
-                allergen_violation=allergen_violation,
-                violations=violations,
+                violations=all_violations,
                 execution_time=execution_time,
                 nutrition_errors=nutrition_errors,
-                jaccard_similarity=jaccard_similarity,
+                constraint_satisfaction_score=constraint_satisfaction_score,
+                inventory_utilization_score=inventory_utilization_score,
+                quality_scores=quality_scores.get("individual_scores", {}),
+                detailed_violations=detailed_violations,
             )
 
         except Exception as e:
@@ -261,12 +278,13 @@ class NutritionEvaluator:
                 model_name=agent_config.model_name,
                 score=0.0,
                 nutrition_score=0.0,
-                shopping_list_score=0.0,
-                allergen_violation=False,
                 violations=[f"Execution error: {str(e)}"],
                 execution_time=execution_time,
                 nutrition_errors={},
-                jaccard_similarity=0.0,
+                constraint_satisfaction_score=0.0,
+                inventory_utilization_score=0.0,
+                quality_scores={},
+                detailed_violations={},
             )
 
     async def evaluate_all_scenarios(
@@ -308,28 +326,45 @@ class NutritionEvaluator:
                 models[result.model_name] = []
             models[result.model_name].append(result)
 
-        # Create summary table
+        # Create summary table with new evaluation metrics
         summary_table = Table(title="Model Performance Summary")
         summary_table.add_column("Model", style="cyan")
-        summary_table.add_column("Avg Score", justify="right")
-        summary_table.add_column("Nutrition Score", justify="right")
-        summary_table.add_column("Shopping Score", justify="right")
+        summary_table.add_column("Total Score", justify="right")
+        summary_table.add_column("Nutrition", justify="right")
+        summary_table.add_column("Constraints", justify="right")
+        summary_table.add_column("Inventory", justify="right")
+        summary_table.add_column("Quality", justify="right")
         summary_table.add_column("Allergen Violations", justify="right")
         summary_table.add_column("Avg Time (s)", justify="right")
 
         for model_name, model_results in models.items():
             avg_score = np.mean([r.score for r in model_results])
             avg_nutrition = np.mean([r.nutrition_score for r in model_results])
-            avg_shopping = np.mean([r.shopping_list_score for r in model_results])
-            allergen_violations = sum([r.allergen_violation for r in model_results])
+            avg_constraints = np.mean(
+                [r.constraint_satisfaction_score for r in model_results]
+            )
+            avg_inventory = np.mean(
+                [r.inventory_utilization_score for r in model_results]
+            )
+
+            # Calculate average quality score
+            quality_scores = []
+            for result in model_results:
+                if result.quality_scores:
+                    quality_scores.append(np.mean(list(result.quality_scores.values())))
+                else:
+                    quality_scores.append(0.0)
+            avg_quality = np.mean(quality_scores)
+
             avg_time = np.mean([r.execution_time for r in model_results])
 
             summary_table.add_row(
                 model_name,
                 f"{avg_score:.3f}",
                 f"{avg_nutrition:.3f}",
-                f"{avg_shopping:.3f}",
-                str(allergen_violations),
+                f"{avg_constraints:.3f}",
+                f"{avg_inventory:.3f}",
+                f"{avg_quality:.3f}",
                 f"{avg_time:.1f}",
             )
 
@@ -341,12 +376,21 @@ class NutritionEvaluator:
 
             detail_table = Table()
             detail_table.add_column("Scenario", style="cyan")
-            detail_table.add_column("Score", justify="right")
+            detail_table.add_column("Total", justify="right")
             detail_table.add_column("Nutrition", justify="right")
-            detail_table.add_column("Shopping", justify="right")
-            detail_table.add_column("Violations", style="red")
+            detail_table.add_column("Constraints", justify="right")
+            detail_table.add_column("Inventory", justify="right")
+            detail_table.add_column("Quality", justify="right")
+            detail_table.add_column("Key Violations", style="red")
 
             for result in model_results:
+                # Calculate average quality score for this result
+                if result.quality_scores:
+                    quality_avg = np.mean(list(result.quality_scores.values()))
+                else:
+                    quality_avg = 0.0
+
+                # Show key violations (first 2)
                 violations_text = "; ".join(
                     result.violations[:2]
                 )  # Show first 2 violations
@@ -357,7 +401,9 @@ class NutritionEvaluator:
                     result.scenario_id,
                     f"{result.score:.3f}",
                     f"{result.nutrition_score:.3f}",
-                    f"{result.shopping_list_score:.3f}",
+                    f"{result.constraint_satisfaction_score:.3f}",
+                    f"{result.inventory_utilization_score:.3f}",
+                    f"{quality_avg:.3f}",
                     violations_text,
                 )
 
@@ -375,12 +421,14 @@ class NutritionEvaluator:
                     "model_name": result.model_name,
                     "score": result.score,
                     "nutrition_score": result.nutrition_score,
-                    "shopping_list_score": result.shopping_list_score,
-                    "allergen_violation": result.allergen_violation,
                     "violations": result.violations,
                     "execution_time": result.execution_time,
                     "nutrition_errors": result.nutrition_errors,
-                    "jaccard_similarity": result.jaccard_similarity,
+                    # New evaluation fields
+                    "constraint_satisfaction_score": result.constraint_satisfaction_score,
+                    "inventory_utilization_score": result.inventory_utilization_score,
+                    "quality_scores": result.quality_scores,
+                    "detailed_violations": result.detailed_violations,
                 }
             )
 

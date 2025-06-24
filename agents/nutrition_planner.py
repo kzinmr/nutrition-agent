@@ -64,7 +64,7 @@ class MealPlansResponse(BaseModel):
     """Structured response containing multiple days of meal plans."""
 
     meal_plans: list[MealPlanStructured]
-    total_shopping_list: list[str]
+    total_missing_ingredients: list[str]
     general_notes: str = ""
 
 
@@ -249,7 +249,7 @@ class NutritionPlannerAgent(BaseAgent):
                     "notes": "any additional notes"
                 }}
             ],
-            "total_shopping_list": ["all missing ingredients"],
+            "total_missing_ingredients": ["all missing ingredients"],
             "general_notes": "general notes about the meal plan"
         }}
         """
@@ -416,54 +416,3 @@ class NutritionPlannerAgent(BaseAgent):
                 console.print(
                     f"Missing ingredients: [red]{', '.join(plan.missing_ingredients)}[/red]"
                 )
-
-    def generate_shopping_list(
-        self, meal_plans: list[MealPlan]
-    ) -> dict[str, list[str]]:
-        """Generate a consolidated shopping list from meal plans."""
-        shopping_list: dict[str, set[str]] = {
-            "proteins": set(),
-            "vegetables": set(),
-            "grains": set(),
-            "dairy": set(),
-            "others": set(),
-        }
-
-        # Collect all missing ingredients
-        for plan in meal_plans:
-            for ingredient in plan.missing_ingredients:
-                # FIXME: Simple categorization - in production, use a proper food database
-                if any(
-                    word in ingredient.lower()
-                    for word in ["chicken", "beef", "fish", "tofu"]
-                ):
-                    shopping_list["proteins"].add(ingredient)
-                elif any(
-                    word in ingredient.lower()
-                    for word in ["carrot", "broccoli", "lettuce", "tomato"]
-                ):
-                    shopping_list["vegetables"].add(ingredient)
-                elif any(
-                    word in ingredient.lower()
-                    for word in ["rice", "bread", "pasta", "oats"]
-                ):
-                    shopping_list["grains"].add(ingredient)
-                elif any(
-                    word in ingredient.lower() for word in ["milk", "cheese", "yogurt"]
-                ):
-                    shopping_list["dairy"].add(ingredient)
-                else:
-                    shopping_list["others"].add(ingredient)
-
-        # Convert sets to lists
-        return {k: list(v) for k, v in shopping_list.items() if v}
-
-    def display_shopping_list(self, shopping_list: dict[str, list[str]]) -> None:
-        """Display shopping list in a formatted way."""
-        console.print("\n[bold green]Shopping List[/bold green]")
-
-        for category, items in shopping_list.items():
-            if items:
-                console.print(f"\n[yellow]{category.title()}:[/yellow]")
-                for item in items:
-                    console.print(f"  • {item}")

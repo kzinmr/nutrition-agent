@@ -14,20 +14,5 @@
     "pfc_ratio": [30.0, 25.0, 45.0],
     "allergens": null,
     "dietary_restrictions": null
-  },
-  "ground_truth": {
-    "expected_missing_ingredients": [
-      "olive_oil",
-      "onions",
-      "garlic",
-      "tomatoes",
-      "whole_wheat_bread",
-      "carrots",
-      "broccoli"
-    ],
-    "expected_nutrition_balance": {
-      "calories_within_10_percent": true,
-      "pfc_within_10_percent": true
-    }
   }
 }

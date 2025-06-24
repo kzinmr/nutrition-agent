@@ -14,21 +14,5 @@
     "pfc_ratio": [35.0, 55.0, 10.0],
     "allergens": null,
     "dietary_restrictions": ["low-carb"]
-  },
-  "ground_truth": {
-    "expected_missing_ingredients": [
-      "olive_oil",
-      "butter",
-      "cauliflower",
-      "zucchini",
-      "salmon",
-      "asparagus",
-      "coconut_oil"
-    ],
-    "expected_nutrition_balance": {
-      "calories_within_10_percent": true,
-      "pfc_within_10_percent": true,
-      "daily_carbs_under_100g": true
-    }
   }
 }

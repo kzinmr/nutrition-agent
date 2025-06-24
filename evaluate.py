@@ -13,7 +13,7 @@ import typer
 from rich.console import Console
 
 from agents.base_agent import AgentConfig, ModelProvider
-from evaluators.nutrition_evaluator import NutritionEvaluator
+from evaluators.reward_functions.nutrition import NutritionEvaluator
 
 console = Console()
 app = typer.Typer(help="Nutrition Agent Evaluation Tool")
@@ -124,12 +124,14 @@ async def run_single_evaluation(scenario: str, model: str, days: int) -> None:
     # Display result
     console.print(f"\n[bold green]Results for {scenario}:[/bold green]")
     console.print(f"Overall Score: {result.score:.3f}/1.0")
-    console.print(f"Nutrition Score: {result.nutrition_score:.3f}/0.5")
-    console.print(f"Shopping List Score: {result.shopping_list_score:.3f}/0.5")
+    console.print(f"Nutrition Score: {result.nutrition_score:.3f}/1.0")
+    console.print(
+        f"Constraint Satisfaction: {result.constraint_satisfaction_score:.3f}/1.0"
+    )
+    console.print(
+        f"Inventory Utilization: {result.inventory_utilization_score:.3f}/1.0"
+    )
     console.print(f"Execution Time: {result.execution_time:.1f}s")
-
-    if result.allergen_violation:
-        console.print("[red]ALLERGEN VIOLATION DETECTED![/red]")
 
     if result.violations:
         console.print("\n[yellow]Violations:[/yellow]")

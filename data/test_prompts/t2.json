@@ -14,20 +14,5 @@
     "pfc_ratio": [25.0, 30.0, 45.0],
     "allergens": null,
     "dietary_restrictions": ["vegetarian"]
-  },
-  "ground_truth": {
-    "expected_missing_ingredients": [
-      "olive_oil",
-      "nutritional_yeast",
-      "quinoa",
-      "nuts_almonds",
-      "bell_peppers",
-      "mushrooms",
-      "tahini"
-    ],
-    "expected_nutrition_balance": {
-      "calories_within_10_percent": true,
-      "pfc_within_10_percent": true
-    }
   }
 }

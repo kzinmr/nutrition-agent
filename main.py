@@ -140,14 +140,10 @@ async def run_interactive() -> None:
     # Display results
     agent.display_meal_plans(meal_plans)
 
-    # Generate shopping list
-    shopping_list = agent.generate_shopping_list(meal_plans)
-    agent.display_shopping_list(shopping_list)
-
     # Ask if user wants to save results
     if Confirm.ask("\nSave meal plan to file?"):
         filename = Prompt.ask("Output filename", default="meal_plan.json")
-        save_meal_plan(meal_plans, shopping_list, filename)
+        save_meal_plan(meal_plans, filename)
 
 
 @app.command()
@@ -193,10 +189,6 @@ async def run_sample(scenario: str, model: str, days: int) -> None:
     # Display results
     agent.display_meal_plans(meal_plans)
 
-    # Generate shopping list
-    shopping_list = agent.generate_shopping_list(meal_plans)
-    agent.display_shopping_list(shopping_list)
-
 
 @app.command()
 def list_samples() -> None:
@@ -228,9 +220,7 @@ def list_samples() -> None:
     console.print(table)
 
 
-def save_meal_plan(
-    meal_plans: list[Any], shopping_list: dict[str, Any], filename: str
-) -> None:
+def save_meal_plan(meal_plans: list[Any], filename: str) -> None:
     """Save meal plan to JSON file."""
     output_data = {
         "generated_at": "2025-06-20",
@@ -247,7 +237,6 @@ def save_meal_plan(
             }
             for plan in meal_plans
         ],
-        "shopping_list": shopping_list,
     }
 
     with open(filename, "w") as f:
