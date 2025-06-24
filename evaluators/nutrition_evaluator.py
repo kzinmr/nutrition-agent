@@ -14,6 +14,11 @@ from agents.nutrition_planner import (
     MealPlan,
     NutritionPlannerAgent,
 )
+from tools.nutrition_calculator import (
+    NutritionCalculator,
+    NutritionTarget,
+    MealNutrition,
+)
 
 console = Console()
 
@@ -45,53 +50,35 @@ class NutritionEvaluator:
         Returns:
             (score, errors, violations)
         """
-        target_calories = target_constraints.daily_calories
-        target_pfc = target_constraints.pfc_ratio
+        # Create MealNutrition object from actual nutrition data
+        actual = MealNutrition(
+            meal_name="Daily total",
+            calories=actual_nutrition.get("total_calories", 0),
+            protein_g=actual_nutrition.get("total_protein_g", 0),
+            fat_g=actual_nutrition.get("total_fat_g", 0),
+            carbs_g=actual_nutrition.get("total_carbs_g", 0),
+        )
 
-        # Calculate daily totals from meal plan
-        actual_calories = actual_nutrition.get("total_calories", 0)
-        actual_protein_g = actual_nutrition.get("total_protein_g", 0)
-        actual_fat_g = actual_nutrition.get("total_fat_g", 0)
-        actual_carbs_g = actual_nutrition.get("total_carbs_g", 0)
+        # Create NutritionTarget from constraints
+        target = NutritionTarget(
+            daily_calories=target_constraints.daily_calories,
+            pfc_ratio=target_constraints.pfc_ratio,
+        )
 
-        # Calculate target macros in grams
-        target_protein_g = (target_calories * target_pfc[0] / 100) / 4
-        target_fat_g = (target_calories * target_pfc[1] / 100) / 9
-        target_carbs_g = (target_calories * target_pfc[2] / 100) / 4
+        # Use NutritionCalculator to calculate errors and check constraints
+        calculator = NutritionCalculator()
+        errors_raw = calculator.calculate_nutrition_error(actual, target)
+        _, violations = calculator.check_nutrition_constraints(
+            actual, target, self.tolerance_pct
+        )
 
-        # Calculate percentage errors
-        errors = {}
-        violations = []
-
-        # Calorie error
-        if target_calories > 0:
-            errors["calories"] = (
-                abs(actual_calories - target_calories) / target_calories * 100
-            )
-            if errors["calories"] > self.tolerance_pct:
-                violations.append(f"Calories off by {errors['calories']:.1f}%")
-
-        # Protein error
-        if target_protein_g > 0:
-            errors["protein"] = (
-                abs(actual_protein_g - target_protein_g) / target_protein_g * 100
-            )
-            if errors["protein"] > self.tolerance_pct:
-                violations.append(f"Protein off by {errors['protein']:.1f}%")
-
-        # Fat error
-        if target_fat_g > 0:
-            errors["fat"] = abs(actual_fat_g - target_fat_g) / target_fat_g * 100
-            if errors["fat"] > self.tolerance_pct:
-                violations.append(f"Fat off by {errors['fat']:.1f}%")
-
-        # Carbs error
-        if target_carbs_g > 0:
-            errors["carbs"] = (
-                abs(actual_carbs_g - target_carbs_g) / target_carbs_g * 100
-            )
-            if errors["carbs"] > self.tolerance_pct:
-                violations.append(f"Carbs off by {errors['carbs']:.1f}%")
+        # Convert error keys to match existing format
+        errors = {
+            "calories": errors_raw["calories_error"],
+            "protein": errors_raw["protein_error"],
+            "fat": errors_raw["fat_error"],
+            "carbs": errors_raw["carbs_error"],
+        }
 
         # Calculate overall nutrition score (0.0 to 0.5)
         max_error = max(errors.values()) if errors else 0

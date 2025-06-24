@@ -3,6 +3,11 @@ from typing import Any
 
 import numpy as np
 
+# Nutritional constants: calories per gram for each macronutrient
+CAL_PER_GRAM_P = 4  # Protein provides 4 kcal/g
+CAL_PER_GRAM_F = 9  # Fat provides 9 kcal/g
+CAL_PER_GRAM_C = 4  # Carbohydrates provide 4 kcal/g
+
 
 @dataclass
 class NutritionTarget:
@@ -11,15 +16,15 @@ class NutritionTarget:
 
     @property
     def daily_protein_g(self) -> float:
-        return (self.daily_calories * self.pfc_ratio[0] / 100) / 4
+        return (self.daily_calories * self.pfc_ratio[0] / 100) / CAL_PER_GRAM_P
 
     @property
     def daily_fat_g(self) -> float:
-        return (self.daily_calories * self.pfc_ratio[1] / 100) / 9
+        return (self.daily_calories * self.pfc_ratio[1] / 100) / CAL_PER_GRAM_F
 
     @property
     def daily_carbs_g(self) -> float:
-        return (self.daily_calories * self.pfc_ratio[2] / 100) / 4
+        return (self.daily_calories * self.pfc_ratio[2] / 100) / CAL_PER_GRAM_C
 
 
 @dataclass
@@ -32,13 +37,17 @@ class MealNutrition:
 
     @property
     def pfc_ratio(self) -> tuple[float, float, float]:
-        total_calories = (self.protein_g * 4) + (self.fat_g * 9) + (self.carbs_g * 4)
+        total_calories = (
+            (self.protein_g * CAL_PER_GRAM_P)
+            + (self.fat_g * CAL_PER_GRAM_F)
+            + (self.carbs_g * CAL_PER_GRAM_C)
+        )
         if total_calories == 0:
             return (0.0, 0.0, 0.0)
 
-        protein_pct = (self.protein_g * 4) / total_calories * 100
-        fat_pct = (self.fat_g * 9) / total_calories * 100
-        carbs_pct = (self.carbs_g * 4) / total_calories * 100
+        protein_pct = (self.protein_g * CAL_PER_GRAM_P) / total_calories * 100
+        fat_pct = (self.fat_g * CAL_PER_GRAM_F) / total_calories * 100
+        carbs_pct = (self.carbs_g * CAL_PER_GRAM_C) / total_calories * 100
 
         return (protein_pct, fat_pct, carbs_pct)
 
@@ -170,6 +179,8 @@ class NutritionCalculator:
         meal: MealNutrition,
         target: NutritionTarget,
         meal_fraction: float = 0.33,  # Fraction of daily target for this meal
+        tolerance_ratio: float = 0.1,
+        # Tolerance ratio for meeting individual macro targets
     ) -> dict[str, float]:
         """
         Suggest how to adjust portion sizes to meet targets.
@@ -200,10 +211,11 @@ class NutritionCalculator:
             "scaled_carbs_g": scaled_carbs,
             "meets_protein": abs(scaled_protein - target_meal_protein)
             / target_meal_protein
-            < 0.1,
-            "meets_fat": abs(scaled_fat - target_meal_fat) / target_meal_fat < 0.1,
+            < tolerance_ratio,
+            "meets_fat": abs(scaled_fat - target_meal_fat) / target_meal_fat
+            < tolerance_ratio,
             "meets_carbs": abs(scaled_carbs - target_meal_carbs) / target_meal_carbs
-            < 0.1,
+            < tolerance_ratio,
         }
 
 
